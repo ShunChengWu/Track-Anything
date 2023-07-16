@@ -1,3 +1,4 @@
+import glob
 import gradio as gr
 import argparse
 import gdown
@@ -104,6 +105,51 @@ def get_frames_from_video(video_input, video_state):
     video_state = {
         "user_name": user_name,
         "video_name": os.path.split(video_path)[-1],
+        "origin_images": frames,
+        "painted_images": frames.copy(),
+        "masks": [np.zeros((frames[0].shape[0],frames[0].shape[1]), np.uint8)]*len(frames),
+        "logits": [None]*len(frames),
+        "select_frame_number": 0,
+        "fps": fps
+        }
+    video_info = "Video Name: {}, FPS: {}, Total Frames: {}, Image Size:{}".format(video_state["video_name"], video_state["fps"], len(frames), image_size)
+    model.samcontroler.sam_controler.reset_image() 
+    model.samcontroler.sam_controler.set_image(video_state["origin_images"][0])
+    return video_state, video_info, video_state["origin_images"][0], gr.update(visible=True, maximum=len(frames), value=1), gr.update(visible=True, maximum=len(frames), value=len(frames)), \
+                        gr.update(visible=True),\
+                        gr.update(visible=True), gr.update(visible=True), \
+                        gr.update(visible=True), gr.update(visible=True), \
+                        gr.update(visible=True), gr.update(visible=True), \
+                        gr.update(visible=True), gr.update(visible=True), \
+                        gr.update(visible=True, value=operation_log)
+                        
+def get_frames_from_folder(folder_input, video_state):
+    try:
+        image_paths = glob.glob(os.path.join(folder_input,'*'))
+        image_paths = sorted(image_paths)
+    except (OSError, TypeError, ValueError, KeyError, SyntaxError) as e:
+        print("unable to find any images from the given path {} error. {}\n".format(folder_input, str(e)))
+    
+    frames = []
+    user_name = time.time()
+    operation_log = [("",""),("Load all images already. Try click the image for adding targets to track and inpaint.","Normal")]
+    try:
+        fps = 10 #TODO: user input?
+        for image_path in image_paths:
+            current_memory_usage = psutil.virtual_memory().percent
+            frame = cv2.imread(image_path, cv2.IMREAD_COLOR)
+            frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            if current_memory_usage > 90:
+                operation_log = [("Memory usage is too high (>90%). Stop the video extraction. Please reduce the video resolution or frame rate.", "Error")]
+                print("Memory usage is too high (>90%). Please reduce the video resolution or frame rate.")
+                break
+    except (OSError, TypeError, ValueError, KeyError, SyntaxError) as e:
+        print("read_frame_source:{} error. {}\n".format(folder_input, str(e)))
+    image_size = (frames[0].shape[0],frames[0].shape[1]) 
+    # initialize video_state
+    video_state = {
+        "user_name": user_name,
+        "video_name": 'mp4',
         "origin_images": frames,
         "painted_images": frames.copy(),
         "masks": [np.zeros((frames[0].shape[0],frames[0].shape[1]), np.uint8)]*len(frames),
@@ -267,15 +313,7 @@ def vos_tracking_video(video_state, interactive_state, mask_dropdown):
         video_state["masks"][video_state["select_frame_number"]:] = masks
         video_state["logits"][video_state["select_frame_number"]:] = logits
         video_state["painted_images"][video_state["select_frame_number"]:] = painted_images
-
-    video_output = generate_video_from_frames(video_state["painted_images"], output_path="./result/track/{}".format(video_state["video_name"]), fps=fps) # import video_input to name the output video
-    interactive_state["inference_times"] += 1
-    
-    print("For generating this tracking result, inference times: {}, click times: {}, positive: {}, negative: {}".format(interactive_state["inference_times"], 
-                                                                                                                                           interactive_state["positive_click_times"]+interactive_state["negative_click_times"],
-                                                                                                                                           interactive_state["positive_click_times"],
-                                                                                                                                        interactive_state["negative_click_times"]))
-
+        
     #### shanggao code for mask save
     if interactive_state["mask_save"]:
         if not os.path.exists('./result/mask/{}'.format(video_state["video_name"].split('.')[0])):
@@ -287,6 +325,15 @@ def vos_tracking_video(video_state, interactive_state, mask_dropdown):
             i+=1
         # save_mask(video_state["masks"], video_state["video_name"])
     #### shanggao code for mask save
+    
+    video_output = generate_video_from_frames(video_state["painted_images"], output_path="./result/track/{}".format(video_state["video_name"]), fps=fps) # import video_input to name the output video
+    interactive_state["inference_times"] += 1
+    
+    print("For generating this tracking result, inference times: {}, click times: {}, positive: {}, negative: {}".format(interactive_state["inference_times"], 
+                                                                                                                                           interactive_state["positive_click_times"]+interactive_state["negative_click_times"],
+                                                                                                                                           interactive_state["positive_click_times"],
+                                                                                                                                        interactive_state["negative_click_times"]))
+    
     return video_output, video_state, interactive_state, operation_log
 
 # extracting masks from mask_dropdown
@@ -378,8 +425,8 @@ SAM_checkpoint = download_checkpoint(sam_checkpoint_url, folder, sam_checkpoint)
 xmem_checkpoint = download_checkpoint(xmem_checkpoint_url, folder, xmem_checkpoint)
 e2fgvi_checkpoint = download_checkpoint_from_google_drive(e2fgvi_checkpoint_id, folder, e2fgvi_checkpoint)
 args.port = 12212
-args.device = "cuda:3"
-# args.mask_save = True
+args.device = "cuda:0"
+args.mask_save = True
 
 # initialize sam, xmem, e2fgvi models
 model = TrackingAnything(SAM_checkpoint, xmem_checkpoint, e2fgvi_checkpoint,args)
@@ -443,6 +490,11 @@ with gr.Blocks() as iface:
                     # extract frames
                     with gr.Column():
                         extract_frames_button = gr.Button(value="Get video info", interactive=True, variant="primary") 
+                        
+                    # for user image input
+                    with gr.Column():
+                        image_folder = gr.Textbox(value = "")
+                        load_images_button = gr.Button(value="Load images", interactive=True, variant="primary") 
 
                      # click points settins, negative or positive, mode continuous or single
                     with gr.Row():
@@ -467,8 +519,12 @@ with gr.Blocks() as iface:
                     with gr.Row():
                         tracking_video_predict_button = gr.Button(value="Tracking", visible=False)
                         inpaint_video_predict_button = gr.Button(value="Inpainting", visible=False)
+                        
+            
+                
 
-    # first step: get the video information 
+    # first step: 
+    # get the video information 
     extract_frames_button.click(
         fn=get_frames_from_video,
         inputs=[
@@ -478,6 +534,16 @@ with gr.Blocks() as iface:
                  image_selection_slider, track_pause_number_slider,point_prompt, clear_button_click, Add_mask_button, template_frame,
                  tracking_video_predict_button, video_output, mask_dropdown, remove_mask_button, inpaint_video_predict_button, run_status]
     )   
+    # get 
+    load_images_button.click(
+        fn = get_frames_from_folder,
+        inputs=[
+            image_folder, video_state
+        ],
+        outputs=[video_state, video_info, template_frame,
+                 image_selection_slider, track_pause_number_slider,point_prompt, clear_button_click, Add_mask_button, template_frame,
+                 tracking_video_predict_button, video_output, mask_dropdown, remove_mask_button, inpaint_video_predict_button, run_status]
+    )
 
     # second step: select images from slider
     image_selection_slider.release(fn=select_template, 
@@ -486,9 +552,9 @@ with gr.Blocks() as iface:
     track_pause_number_slider.release(fn=get_end_number, 
                                    inputs=[track_pause_number_slider, video_state, interactive_state], 
                                    outputs=[template_frame, interactive_state, run_status], api_name="end_image")
-    resize_ratio_slider.release(fn=get_resize_ratio, 
-                                   inputs=[resize_ratio_slider, interactive_state], 
-                                   outputs=[interactive_state], api_name="resize_ratio")
+    # resize_ratio_slider.release(fn=get_resize_ratio, 
+    #                                inputs=[resize_ratio_slider, interactive_state], 
+    #                                outputs=[interactive_state], api_name="resize_ratio")
     
     # click select image to get mask using sam
     template_frame.select(
@@ -586,17 +652,17 @@ with gr.Blocks() as iface:
         outputs = [template_frame,click_state, run_status],
     )
     # set example
-    gr.Markdown("##  Examples")
-    gr.Examples(
-        examples=[os.path.join(os.path.dirname(__file__), "./test_sample/", test_sample) for test_sample in ["test-sample8.mp4","test-sample4.mp4", \
-                                                                                                             "test-sample2.mp4","test-sample13.mp4"]],
-        fn=run_example,
-        inputs=[
-            video_input
-        ],
-        outputs=[video_input],
-        # cache_examples=True,
-    ) 
+    # gr.Markdown("##  Examples")
+    # gr.Examples(
+    #     examples=[os.path.join(os.path.dirname(__file__), "./test_sample/", test_sample) for test_sample in ["test-sample8.mp4","test-sample4.mp4", \
+    #                                                                                                          "test-sample2.mp4","test-sample13.mp4"]],
+    #     fn=run_example,
+    #     inputs=[
+    #         video_input
+    #     ],
+    #     outputs=[video_input],
+    #     # cache_examples=True,
+    # ) 
 iface.queue(concurrency_count=1)
 iface.launch(debug=True, enable_queue=True, server_port=args.port, server_name="0.0.0.0")
 # iface.launch(debug=True, enable_queue=True)
