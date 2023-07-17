@@ -131,6 +131,7 @@ def get_frames_from_folder(folder_input, video_state):
         print("unable to find any images from the given path {} error. {}\n".format(folder_input, str(e)))
     
     frames = []
+    names = []
     user_name = time.time()
     operation_log = [("",""),("Load all images already. Try click the image for adding targets to track and inpaint.","Normal")]
     try:
@@ -139,19 +140,24 @@ def get_frames_from_folder(folder_input, video_state):
             current_memory_usage = psutil.virtual_memory().percent
             frame = cv2.imread(image_path, cv2.IMREAD_COLOR)
             frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            names.append(os.path.basename(image_path).split('.')[0])
+            
+            assert frame.dtype == frames[0].dtype, "Inputs have multiple data types!"
             if current_memory_usage > 90:
                 operation_log = [("Memory usage is too high (>90%). Stop the video extraction. Please reduce the video resolution or frame rate.", "Error")]
                 print("Memory usage is too high (>90%). Please reduce the video resolution or frame rate.")
                 break
     except (OSError, TypeError, ValueError, KeyError, SyntaxError) as e:
         print("read_frame_source:{} error. {}\n".format(folder_input, str(e)))
+        
     image_size = (frames[0].shape[0],frames[0].shape[1]) 
-    print('frames[0].shape',frames[0].shape)
-    print('image_size',image_size)
+    # print('frames[0].shape',frames[0].shape)
+    # print('image_size',image_size)
     # initialize video_state
     video_state = {
         "user_name": user_name,
         "video_name": 'output.mp4',
+        "names" : names,
         "origin_images": frames,
         "painted_images": frames.copy(),
         "masks": [np.zeros((frames[0].shape[0],frames[0].shape[1]), np.uint8)]*len(frames),
@@ -318,16 +324,35 @@ def vos_tracking_video(video_state, interactive_state, mask_dropdown):
         
     #### shanggao code for mask save
     if interactive_state["mask_save"]:
-        if not os.path.exists('./result/mask/{}'.format(video_state["video_name"].split('.')[0])):
-            os.makedirs('./result/mask/{}'.format(video_state["video_name"].split('.')[0]))
-        i = 0
-        print("save mask")
-        for mask in video_state["masks"]:
-            np.save(os.path.join('./result/mask/{}'.format(video_state["video_name"].split('.')[0]), '{:05d}.npy'.format(i)), mask)
-            i+=1
+        # Save to npy
+        if True:
+            if not os.path.exists('./result/mask/{}'.format(video_state["video_name"].split('.')[0])):
+                os.makedirs('./result/mask/{}'.format(video_state["video_name"].split('.')[0]))
+            i = 0
+            print("save mask")
+            for mask in video_state["masks"]:
+                np.save(os.path.join('./result/mask/{}'.format(video_state["video_name"].split('.')[0]), '{:05d}.npy'.format(i)), mask)
+                i+=1
+                
+        # Save to png (instant-ngp format)
+        if True:
+            folder_name = './result/mask_instnat-ngp'
+            if not os.path.exists(folder_name):
+                os.makedirs(folder_name)
+
+            print("save mask for instant-ngp")
+            for idx, mask in enumerate(video_state["masks"]):
+                if "names" in video_state:
+                    name = os.path.join(folder_name,'{}'.format('dynamic_mask_' + video_state["names"][idx] + '.png'))
+                else:
+                    name = os.path.join(folder_name,'{}'.format(video_state["video_name"].split('.')[0]), '{:05d}.npy'.format(idx))
+                cv2.imwrite(name,1-mask)
+            
+        
         # save_mask(video_state["masks"], video_state["video_name"])
     #### shanggao code for mask save
     
+    print("generate video")
     video_output = generate_video_from_frames(video_state["painted_images"], output_path="./result/track/{}".format(video_state["video_name"]), fps=fps) # import video_input to name the output video
     interactive_state["inference_times"] += 1
     
@@ -654,17 +679,17 @@ with gr.Blocks() as iface:
         outputs = [template_frame,click_state, run_status],
     )
     # set example
-    # gr.Markdown("##  Examples")
-    # gr.Examples(
-    #     examples=[os.path.join(os.path.dirname(__file__), "./test_sample/", test_sample) for test_sample in ["test-sample8.mp4","test-sample4.mp4", \
-    #                                                                                                          "test-sample2.mp4","test-sample13.mp4"]],
-    #     fn=run_example,
-    #     inputs=[
-    #         video_input
-    #     ],
-    #     outputs=[video_input],
-    #     # cache_examples=True,
-    # ) 
+    gr.Markdown("##  Examples")
+    gr.Examples(
+        examples=[os.path.join(os.path.dirname(__file__), "./test_sample/", test_sample) for test_sample in ["test-sample8.mp4","test-sample4.mp4", \
+                                                                                                             "test-sample2.mp4","test-sample13.mp4"]],
+        fn=run_example,
+        inputs=[
+            video_input
+        ],
+        outputs=[video_input],
+        # cache_examples=True,
+    ) 
 iface.queue(concurrency_count=1)
 iface.launch(debug=True, enable_queue=True, server_port=args.port, server_name="0.0.0.0")
 # iface.launch(debug=True, enable_queue=True)
