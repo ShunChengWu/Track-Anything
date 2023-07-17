@@ -4,7 +4,7 @@ gitpython
 git+https://github.com/cheind/py-thin-plate-spline
 hickle
 tensorboard
-numpy
+numpy==1.21.6
 git+https://github.com/facebookresearch/segment-anything.git
 gradio
 opencv-python
