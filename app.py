@@ -6,8 +6,8 @@ import cv2
 import numpy as np
 import os
 import sys
-sys.path.append(sys.path[0]+"/tracker")
-sys.path.append(sys.path[0]+"/tracker/model")
+sys.path.append(sys.path[0]+"./tracker")
+sys.path.append(sys.path[0]+"./tracker/model")
 from track_anything import TrackingAnything
 from track_anything import parse_augment
 import requests
@@ -418,7 +418,11 @@ def generate_video_from_frames(frames, output_path, fps=30):
     #     video.write(frame)
     
     # video.release()
-    frames = torch.from_numpy(np.asarray(frames))
+    try:
+        frames = torch.from_numpy(np.asarray(frames))
+    except:
+        for frame in frames:
+            print(frame.dtype)
     if not os.path.exists(os.path.dirname(output_path)):
         os.makedirs(os.path.dirname(output_path))
     torchvision.io.write_video(output_path, frames, fps=fps, video_codec="libx264")
