@@ -149,7 +149,7 @@ def get_frames_from_folder(folder_input, video_state):
     # initialize video_state
     video_state = {
         "user_name": user_name,
-        "video_name": 'mp4',
+        "video_name": 'output.mp4',
         "origin_images": frames,
         "painted_images": frames.copy(),
         "masks": [np.zeros((frames[0].shape[0],frames[0].shape[1]), np.uint8)]*len(frames),
