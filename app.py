@@ -6,8 +6,12 @@ import cv2
 import numpy as np
 import os
 import sys
-sys.path.append(sys.path[0]+"./tracker")
-sys.path.append(sys.path[0]+"./tracker/model")
+if sys.path[0] == '':
+    sys.path.append(sys.path[0]+"./tracker")
+    sys.path.append(sys.path[0]+"./tracker/model")
+else:
+    sys.path.append(sys.path[0]+"/tracker")
+    sys.path.append(sys.path[0]+"/tracker/model")
 from track_anything import TrackingAnything
 from track_anything import parse_augment
 import requests
@@ -87,11 +91,25 @@ def get_frames_from_video(video_input, video_state):
     try:
         cap = cv2.VideoCapture(video_path)
         fps = cap.get(cv2.CAP_PROP_FPS)
+        
+        # width  = cap.get(cv2.CAP_PROP_FRAME_WIDTH)   # float `width`
+        # height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)  # float `height`
+        # print(width,height)
+        
         while cap.isOpened():
             ret, frame = cap.read()
             if ret == True:
                 current_memory_usage = psutil.virtual_memory().percent
+                if video_state['resize_ratio'] < 1.0:
+                    frame = cv2.resize(frame, (0,0), fx=video_state['resize_ratio'], fy=video_state['resize_ratio']) 
                 frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                
+                
+                
+                # print('shape:',frame.shape)
+                # import sys
+                # sys.exit()
+                
                 if current_memory_usage > 90:
                     operation_log = [("Memory usage is too high (>90%). Stop the video extraction. Please reduce the video resolution or frame rate.", "Error")]
                     print("Memory usage is too high (>90%). Please reduce the video resolution or frame rate.")
@@ -207,9 +225,9 @@ def get_end_number(track_pause_number_slider, video_state, interactive_state):
 
     return video_state["painted_images"][track_pause_number_slider],interactive_state, operation_log
 
-def get_resize_ratio(resize_ratio_slider, interactive_state):
+def get_resize_ratio(resize_ratio_slider, video_state, interactive_state):
     interactive_state["resize_ratio"] = resize_ratio_slider
-
+    video_state["resize_ratio"] = resize_ratio_slider
     return interactive_state
 
 # use sam to get the mask
@@ -336,17 +354,21 @@ def vos_tracking_video(video_state, interactive_state, mask_dropdown):
                 
         # Save to png (instant-ngp format)
         if True:
-            folder_name = './result/mask_instnat-ngp'
-            if not os.path.exists(folder_name):
-                os.makedirs(folder_name)
+            try:
+                folder_name = './result/mask_instnat-ngp'
+                if not os.path.exists(folder_name):
+                    os.makedirs(folder_name)
 
-            print("save mask for instant-ngp")
-            for idx, mask in enumerate(video_state["masks"]):
-                if "names" in video_state:
-                    name = os.path.join(folder_name,'{}'.format('dynamic_mask_' + video_state["names"][idx] + '.png'))
-                else:
-                    name = os.path.join(folder_name,'{}'.format(video_state["video_name"].split('.')[0]), '{:05d}.npy'.format(idx))
-                cv2.imwrite(name,1-mask)
+                print("save mask for instant-ngp")
+                for idx, mask in enumerate(video_state["masks"]):
+                    if "names" in video_state:
+                        name = os.path.join(folder_name,'{}'.format('dynamic_mask_' + video_state["names"][idx] + '.png'))
+                    else:
+                        name = os.path.join(folder_name,'{}'.format(video_state["video_name"].split('.')[0]), '{:05d}.npy'.format(idx)).replace('.npy','.png')
+                    # print(idx,name)
+                    cv2.imwrite(name,1-mask)
+            except (OSError, TypeError, ValueError, KeyError, SyntaxError) as e:
+                print('unable to save. error. {}'.format(str(e)))
             
         
         # save_mask(video_state["masks"], video_state["video_name"])
@@ -497,7 +519,8 @@ with gr.Blocks() as iface:
         "inpaint_masks": None,
         "logits": None,
         "select_frame_number": 0,
-        "fps": 30
+        "fps": 30,
+        "resize_ratio": 1 # TODO: seperate this resize_ratio from interactive_state
         }
     )
     gr.Markdown(title)
@@ -583,9 +606,9 @@ with gr.Blocks() as iface:
     track_pause_number_slider.release(fn=get_end_number, 
                                    inputs=[track_pause_number_slider, video_state, interactive_state], 
                                    outputs=[template_frame, interactive_state, run_status], api_name="end_image")
-    # resize_ratio_slider.release(fn=get_resize_ratio, 
-    #                                inputs=[resize_ratio_slider, interactive_state], 
-    #                                outputs=[interactive_state], api_name="resize_ratio")
+    resize_ratio_slider.release(fn=get_resize_ratio, 
+                                   inputs=[resize_ratio_slider, video_state, interactive_state], 
+                                   outputs=[interactive_state], api_name="resize_ratio")
     
     # click select image to get mask using sam
     template_frame.select(
