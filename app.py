@@ -146,6 +146,8 @@ def get_frames_from_folder(folder_input, video_state):
     except (OSError, TypeError, ValueError, KeyError, SyntaxError) as e:
         print("read_frame_source:{} error. {}\n".format(folder_input, str(e)))
     image_size = (frames[0].shape[0],frames[0].shape[1]) 
+    print('frames[0].shape',frames[0].shape)
+    print('image_size',image_size)
     # initialize video_state
     video_state = {
         "user_name": user_name,
