@@ -1,6 +1,6 @@
 import PIL
 from tqdm import tqdm
-
+import torch
 from tools.interact_tools import SamControler
 from tracker.base_tracker import BaseTracker
 from inpainter.base_inpainter import BaseInpainter
@@ -40,22 +40,24 @@ class TrackingAnything():
     #     return mask, logit, painted_image
 
     def generator(self, images: list, template_mask:np.ndarray):
-        
-        masks = []
-        logits = []
-        painted_images = []
-        for i in tqdm(range(len(images)), desc="Tracking image"):
-            if i ==0:           
-                mask, logit, painted_image = self.xmem.track(images[i], template_mask)
-                masks.append(mask)
-                logits.append(logit)
-                painted_images.append(painted_image)
-                
-            else:
-                mask, logit, painted_image = self.xmem.track(images[i])
-                masks.append(mask)
-                logits.append(logit)
-                painted_images.append(painted_image)
+        torch.cuda.empty_cache()
+        with torch.no_grad():
+            masks = []
+            logits = []
+            painted_images = []
+            for i in tqdm(range(len(images)), desc="Tracking image"):
+                torch.cuda.empty_cache()
+                if i ==0:           
+                    mask, logit, painted_image = self.xmem.track(images[i], template_mask)
+                    masks.append(mask)
+                    logits.append(logit)
+                    painted_images.append(painted_image)
+                    
+                else:
+                    mask, logit, painted_image = self.xmem.track(images[i])
+                    masks.append(mask)
+                    logits.append(logit)
+                    painted_images.append(painted_image)
         return masks, logits, painted_images
     
         

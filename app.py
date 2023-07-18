@@ -101,7 +101,10 @@ def get_frames_from_video(video_input, video_state):
             if ret == True:
                 current_memory_usage = psutil.virtual_memory().percent
                 if video_state['resize_ratio'] < 1.0:
-                    frame = cv2.resize(frame, (0,0), fx=video_state['resize_ratio'], fy=video_state['resize_ratio']) 
+                    height, width = frame.shape[0], frame.shape[1]
+                    height = int((video_state['resize_ratio']*height)//2 * 2)
+                    width  = int((video_state['resize_ratio']*width)//2 * 2)
+                    frame = cv2.resize(frame, (width,height), interpolation = cv2.INTER_AREA) 
                 frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                 
                 
@@ -157,6 +160,13 @@ def get_frames_from_folder(folder_input, video_state):
         for image_path in image_paths:
             current_memory_usage = psutil.virtual_memory().percent
             frame = cv2.imread(image_path, cv2.IMREAD_COLOR)
+            
+            if video_state['resize_ratio'] < 1.0:
+                height, width = frame.shape[0], frame.shape[1]
+                height = int((video_state['resize_ratio']*height)//2 * 2)
+                width  = int((video_state['resize_ratio']*width)//2 * 2)
+                frame = cv2.resize(frame, (width,height), interpolation = cv2.INTER_AREA) 
+            
             frames.append(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
             names.append(os.path.basename(image_path).split('.')[0])
             
@@ -367,6 +377,7 @@ def vos_tracking_video(video_state, interactive_state, mask_dropdown):
                         name = os.path.join(folder_name,'{}'.format(video_state["video_name"].split('.')[0]), '{:05d}.npy'.format(idx)).replace('.npy','.png')
                     # print(idx,name)
                     cv2.imwrite(name,1-mask)
+                    
             except (OSError, TypeError, ValueError, KeyError, SyntaxError) as e:
                 print('unable to save. error. {}'.format(str(e)))
             

@@ -24,6 +24,7 @@ class BaseSegmenter:
         self.torch_dtype = torch.float16 if 'cuda' in device else torch.float32
         self.model = sam_model_registry[model_type](checkpoint=SAM_checkpoint)
         self.model.to(device=self.device)
+        self.model.eval()
         self.predictor = SamPredictor(self.model)
         self.embedded = False
 
