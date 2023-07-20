@@ -233,7 +233,7 @@ def get_end_number(track_pause_number_slider, video_state, interactive_state):
     interactive_state["track_end_number"] = track_pause_number_slider
     operation_log = [("",""),("Set the tracking finish at frame {}".format(track_pause_number_slider),"Normal")]
 
-    return video_state["painted_images"][track_pause_number_slider],interactive_state, operation_log
+    return video_state["painted_images"][track_pause_number_slider-1],interactive_state, operation_log
 
 def get_resize_ratio(resize_ratio_slider, video_state, interactive_state):
     interactive_state["resize_ratio"] = resize_ratio_slider
@@ -365,7 +365,8 @@ def vos_tracking_video(video_state, interactive_state, mask_dropdown):
         # Save to png (instant-ngp format)
         if True:
             try:
-                folder_name = './result/mask_instnat-ngp'
+                folder_name = './result/mask_instnat-ngp/{}'.format(video_state["video_name"].split('.')[0])
+                print('folder_name',folder_name)
                 if not os.path.exists(folder_name):
                     os.makedirs(folder_name)
 
@@ -374,7 +375,7 @@ def vos_tracking_video(video_state, interactive_state, mask_dropdown):
                     if "names" in video_state:
                         name = os.path.join(folder_name,'{}'.format('dynamic_mask_' + video_state["names"][idx] + '.png'))
                     else:
-                        name = os.path.join(folder_name,'{}'.format(video_state["video_name"].split('.')[0]), '{:05d}.npy'.format(idx)).replace('.npy','.png')
+                        name = os.path.join(folder_name,'{:05d}.npy'.format(idx)).replace('.npy','.png')
                     # print(idx,name)
                     cv2.imwrite(name,1-mask)
                     
