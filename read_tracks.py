@@ -42,7 +42,7 @@ def download_checkpoint(url, folder, filename):
 
 def parse_augment():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--exp_name', type=str,default='test_colmap_track')
+    parser.add_argument('--exp_name', type=str,default='test_colmap_track_2')
     parser.add_argument('--device', type=str, default="cuda:0")
     parser.add_argument('--sam_model_type', type=str, default="vit_h")
     parser.add_argument('--port', type=int, default=6080, help="only useful when running gradio applications")  
@@ -141,7 +141,6 @@ if __name__ == '__main__':
                 np.array(points), 
                 np.array(labels), multimask)
         else:
-            break
             non_zero_scores = np.array([score for score in pt_scores.values() if score != 0])
             score_std = np.std(np.abs(non_zero_scores))
             threshold = np.abs(non_zero_scores).mean()
