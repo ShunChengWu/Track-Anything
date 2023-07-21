@@ -72,9 +72,9 @@ class ColmapTrackerSegmentAnything():
                     score = self.pt_scores[pt_id]
                     
                     #TODO: maybe only filter positive?
-                    if score == 0: continue
-                    # if score >=0:
-                    #     if abs(score) < threshold: continue 
+                    # if score == 0: continue
+                    if score >=0:
+                        if abs(score) < threshold: continue 
                     
                     label = 1 if score > 0 else -1
                     point = [img_xy[0],img_xy[1]]
