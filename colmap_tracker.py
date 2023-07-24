@@ -21,6 +21,17 @@ class Image():
         self.name = name
     def __lt__(self,other):
         return self.idx < other.idx
+    
+def drawKeyPoints(colmap_img: ColmapImg, image_path:str):
+    image_name = os.path.join(image_path,"{0:04d}.png".format(colmap_img.id))
+    img = cv2.imread(image_name)
+    
+    imagegray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
+    kpts = [cv2.KeyPoint(x=xy[0],y=xy[1],size=1) for xy in colmap_img.xys]
+    output_img = cv2.drawKeypoints(imagegray, kpts, 0, (0,255,0), flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
+    
+    return output_img    
 
 class ColmapTrackerSegmentAnything():
     def __init__(self, sam_checkpoint, args):
@@ -82,13 +93,13 @@ class ColmapTrackerSegmentAnything():
                     # if score == 0: continue
                     if score >=0:
                         if abs(score) < threshold: continue 
-                    
-                    label = 1 if score > 0 else -1
+            
+                    label = 1 if score > 0 else 0
                     point = [img_xy[0],img_xy[1]]
                     
                     points.append(point)
                     labels.append(label)
-                if len(points) == 0:
+                if np.asarray(labels).sum() == 0: # no positive samples
                     # reduce threshold
                     threshold -= score_std
                     print('reduce threshold to {}'.format(threshold))
@@ -137,16 +148,7 @@ class ColmapTrackerSegmentAnything():
             self.pt_scores[pt_id] += 1 if score == True else -1
             
 
-def drawKeyPoints(colmap_img: ColmapImg, image_path:str):
-    image_name = os.path.join(image_path,"{0:04d}.png".format(colmap_img.id))
-    img = cv2.imread(image_name)
-    
-    imagegray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    
-    kpts = [cv2.KeyPoint(x=xy[0],y=xy[1],size=1) for xy in colmap_img.xys]
-    output_img = cv2.drawKeypoints(imagegray, kpts, 0, (0,255,0), flags=cv2.DRAW_MATCHES_FLAGS_DEFAULT)
-    
-    return output_img    
+
 
 def download_checkpoint(url, folder, filename):
     os.makedirs(folder, exist_ok=True)
@@ -168,6 +170,7 @@ def parse_augment():
     parser = argparse.ArgumentParser()
     parser.add_argument('--exp_name', type=str,default='test_colmap_track_2')
     parser.add_argument('--colmap_model', type=str, default="", required=True)
+    parser.add_argument('--path_images', type=str, default="", required=True)
     parser.add_argument('--device', type=str, default="cuda:0")
     parser.add_argument('--sam_model_type', type=str, default="vit_h")
     parser.add_argument('--port', type=int, default=6080, help="only useful when running gradio applications")  
@@ -193,11 +196,12 @@ if __name__ == '__main__':
     
     """
     
-    path_colmap = '/home/sc/data/HLoc_s0.5fps2/colmap_text'
-    path_images = '/home/sc/data/s0.5fps2/images_resized'
+    # path_colmap = '/home/sc/data/HLoc_s0.5fps2/colmap_text'
+    # path_images = '/home/sc/data/s0.5fps2/images_resized'
     args = parse_augment()
     
     path_colmap = args.colmap_model
+    path_images = args.path_images
     
     path_out = os.path.join('result',args.exp_name)
     pathlib.Path(path_out).mkdir(exist_ok=True,parents=True)
@@ -228,29 +232,31 @@ if __name__ == '__main__':
     sam_checkpoint_url = SAM_checkpoint_url_dict[args.sam_model_type] 
     SAM_checkpoint = download_checkpoint(sam_checkpoint_url, folder, sam_checkpoint)
     
-    ctsam = ColmapTrackerSegmentAnything(SAM_checkpoint,path_colmap,args)
+    ctsam = ColmapTrackerSegmentAnything(SAM_checkpoint,args)
+    ctsam.init_colmap(path_colmap)
     
     # samcontroler = SamControler(SAM_checkpoint, args.sam_model_type, args.device)
     multimask = "True"
 
 
     images = []
+    h,w = 0,0
     for img_info in tqdm(ctsam.imgs_info,desc="Load images to buffer"):
-        img = ctsam.imgs[img_info.idx]
         # Load image
-        image_name = os.path.join(path_images,"{0:04d}.png".format(img.id))
+        image_name = os.path.join(path_images,img_info.name)
         frame = cv2.imread(image_name, cv2.IMREAD_COLOR)
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        images.append(Image(img_info.idx,frame))
-        
+        images.append(Image(img_info.idx,frame,img_info.name))
+        h = frame.shape[0]
+        w = frame.shape[1]
         if len(images)>2:break
         
     # First click
     points = [
         # [int(frame.shape[0]/2), int(frame.shape[1]/2)],
-        [ 100, 500],
+        [ int((w*0.5)//1), int((h*0.5)//1)],
         
-        [ 100, 250]
+        [ int((w*0.2)//1), int((h*0.2)//1)]
     ] # [x,y]
     labels = [
         1, 
@@ -269,16 +275,16 @@ if __name__ == '__main__':
     painted_image.image.save(os.path.join(path_out_img,"tmp_painted_img_{0:04d}.png".format(painted_image.idx)))
         
     masks, logits, painted_images = ctsam.generator(
-        images[1:],
+        images,
     )
     
     # Save
     for mask, painted_image in zip(masks, painted_images):
         path_out_img = os.path.join(path_out,"image")
         pathlib.Path(path_out_img).mkdir(exist_ok=True,parents=True)
-        painted_image.image.save(os.path.join(path_out_img,"tmp_painted_img_{0:04d}.png".format(painted_image.idx)))
+        painted_image.image.save(os.path.join(path_out_img,"tmp_painted_img_{}".format(painted_image.name)))
         
         path_out_mask_ngp = os.path.join(path_out,"mask_instant-ngp")
         pathlib.Path(path_out_mask_ngp).mkdir(exist_ok=True,parents=True)
-        name = os.path.join(path_out_mask_ngp,'dynamic_mask_{0:04d}.png'.format(img.id))
+        name = os.path.join(path_out_mask_ngp,'dynamic_mask_{}'.format(painted_image.name))
         cv2.imwrite(name,1-mask)
